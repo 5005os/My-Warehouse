@@ -271,7 +271,7 @@ const USERS=[
 let currentUser=null;
 
 /* ---------- Хранилище ---------- */
-const KEY='sklad_v2', CKEY='sklad_chat_v2', UKEY='sklad_user';
+const KEY='sklad_v3', CKEY='sklad_chat_v2', UKEY='sklad_user';
 let mem=null;
 function load(){
   if(mem) return mem;
@@ -281,20 +281,7 @@ function load(){
 }
 function save(){try{localStorage.setItem(KEY,JSON.stringify(mem));}catch(e){}}
 function seed(){
-  return {
-    products:[
-      {id:id(),name:'Наушники TWS Pro',barcode:'4600123456789',qty:180,photo:''},
-      {id:id(),name:'Power Bank 20000',barcode:'4600987654321',qty:90,photo:''},
-      {id:id(),name:'Кабель USB-C 2м',barcode:'4600555111222',qty:360,photo:''},
-    ],
-    returns:[
-      {id:id(),name:'Наушники TWS Pro',barcode:'4600123456789',qty:3,status:'repair',date:Date.now()-86400000},
-      {id:id(),name:'Power Bank 20000',barcode:'4600987654321',qty:1,status:'done',date:Date.now()-43200000},
-    ],
-    shipments:[
-      {id:id(),city:'Тула',truck:'А123ВС 71',driver:'',items:[{name:'Кабель USB-C 2м',barcode:'4600555111222',qty:200}],status:'assembling',date:Date.now()-3600000},
-    ],
-  };
+  return { products:[], returns:[], shipments:[] };
 }
 function id(){return Math.random().toString(36).slice(2,10)}
 const db=load();
@@ -409,9 +396,7 @@ function renderHome(){
       <div class="stat"><span class="tag" style="background:var(--amber)"></span><div class="num mono">${assembling}</div><div class="lab">На сборке</div></div>
       <div class="stat"><span class="tag" style="background:var(--green)"></span><div class="num mono">${ready}</div><div class="lab">Готовы к отправке</div></div>
     </div>
-    <a class="link" id="resetLink">Сбросить все данные</a>
   `;
-  $('#resetLink').onclick=()=>{ if(confirm('Удалить все данные склада? Действие нельзя отменить.')){localStorage.removeItem(KEY);mem=seed();Object.assign(db,mem);render();} };
 }
 
 function renderGoods(){
