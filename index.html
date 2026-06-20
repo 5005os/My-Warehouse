@@ -5,117 +5,122 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>СКЛАД ЦОЙ</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        input, button { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #ECEEF1; margin: 0; padding-bottom: 70px; }
+        .header { background: #15171C; color: white; padding: 20px; text-align: center; }
+        .container { max-width: 600px; margin: 20px auto; padding: 0 15px; }
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        input, button { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
         button { background: #FF5A1F; color: white; border: none; font-weight: bold; cursor: pointer; }
-        .item { border-bottom: 1px solid #eee; padding: 10px 0; display: flex; justify-content: space-between; }
-        #status { text-align: center; margin-bottom: 10px; font-weight: bold; }
+        .photo-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; margin-top: 5px; display: none; }
+        .login-screen { position: fixed; inset: 0; background: #15171C; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
         .hidden { display: none; }
+        h2 { margin-top: 0; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2 style="text-align:center">СКЛАД ЦОЙ</h2>
-    
-    <!-- Экран входа -->
-    <div id="login-screen">
-        <input type="text" id="login" placeholder="Логин (Николай)">
-        <input type="password" id="pass" placeholder="Пароль (Цой2026)">
-        <button onclick="doLogin()">Войти</button>
-        <p id="error" style="color:red; text-align:center"></p>
-    </div>
-
-    <!-- Экран склада -->
-    <div id="app-screen" class="hidden">
-        <div id="status">Подключение...</div>
-        <hr>
-        <h3>Добавить товар:</h3>
-        <input type="text" id="new-name" placeholder="Название товара">
-        <input type="number" id="new-qty" placeholder="Количество">
-        <button onclick="addProduct()">Сохранить на сервер</button>
-        
-        <h3>Список товаров:</h3>
-        <div id="list"></div>
+<!-- ВХОД -->
+<div id="login" class="login-screen">
+    <h1>СКЛАД ЦОЙ</h1>
+    <div style="width: 300px;">
+        <input type="text" id="lg-login" placeholder="Логин (Николай)" style="background:#2c2f37; color:white; border:#444">
+        <input type="password" id="lg-pass" placeholder="Пароль (Цой2026)" style="background:#2c2f37; color:white; border:#444">
+        <button onclick="checkLogin()">Войти</button>
     </div>
 </div>
 
-<script type="module">
-    import PocketBase from 'https://cdn.jsdelivr.net/npm/pocketbase@0.21.0/+esm';
+<!-- ПРИЛОЖЕНИЕ -->
+<div id="app" class="hidden">
+    <div class="header"><h2>СКЛАД ЦОЙ</h2></div>
     
-    // Твой сервер
-    const pb = new PocketBase('http://mytest1234test1234.ru');
-    
-    let db = { products: [] };
-    let docId = null;
+    <div class="container">
+        <!-- Форма добавления -->
+        <div class="card">
+            <h3>Новый товар</h3>
+            <input type="text" id="p-name" placeholder="Название товара">
+            <input type="number" id="p-qty" placeholder="Количество">
+            <label style="font-size:12px; color:#666">Фото товара:</label>
+            <input type="file" id="p-file" accept="image/*" onchange="previewFile()">
+            <img id="preview" class="photo-preview">
+            <button onclick="addProduct()">Добавить в список</button>
+        </div>
 
-    // Вход
-    window.doLogin = function() {
-        const l = document.getElementById('login').value;
-        const p = document.getElementById('pass').value;
-        
-        // Простая проверка (как ты просил)
+        <!-- Список товаров -->
+        <div id="product-list"></div>
+    </div>
+</div>
+
+<script>
+    // Простая проверка входа
+    function checkLogin() {
+        const l = document.getElementById('lg-login').value;
+        const p = document.getElementById('lg-pass').value;
         if ((l === 'Николай' && p === 'Цой2026') || (l === 'Аза' && p === '909010')) {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('app-screen').classList.remove('hidden');
-            initApp();
+            document.getElementById('login').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            loadProducts();
         } else {
-            document.getElementById('error').innerText = "Неверный логин или пароль";
-        }
-    };
-
-    // Запуск приложения
-    async function initApp() {
-        try {
-            // Пытаемся получить данные
-            const list = await pb.collection('warehouse').getList(1, 1);
-            
-            if (list.items.length > 0) {
-                docId = list.items[0].id;
-                db = JSON.parse(list.items[0].data || '{}');
-                if (!db.products) db.products = [];
-            } else {
-                // Если базы нет, создаем её
-                const record = await pb.collection('warehouse').create({ data: JSON.stringify(db) });
-                docId = record.id;
-            }
-            
-            document.getElementById('status').innerText = "✅ Сервер подключен!";
-            document.getElementById('status').style.color = "green";
-            render();
-        } catch (e) {
-            document.getElementById('status').innerText = "❌ Ошибка сервера: " + e.message;
-            console.error(e);
+            alert("Неверный логин или пароль!");
         }
     }
 
+    // Предпросмотр фото
+    let currentPhoto = "";
+    function previewFile() {
+        const file = document.getElementById('p-file').files[0];
+        const reader = new FileReader();
+        reader.onloadend = function() {
+            document.getElementById('preview').src = reader.result;
+            document.getElementById('preview').style.display = 'block';
+            currentPhoto = reader.result; // Сохраняем фото в память
+        }
+        if (file) reader.readAsDataURL(file);
+    }
+
     // Добавление товара
-    window.addProduct = async function() {
-        const name = document.getElementById('new-name').value;
-        const qty = document.getElementById('new-qty').value;
+    function addProduct() {
+        const name = document.getElementById('p-name').value;
+        const qty = document.getElementById('p-qty').value;
         
         if (!name) return alert("Введите название!");
-        
-        db.products.push({ name: name, qty: qty });
-        
-        try {
-            await pb.collection('warehouse').update(docId, { data: JSON.stringify(db) });
-            document.getElementById('new-name').value = '';
-            document.getElementById('new-qty').value = '';
-            render();
-        } catch (e) {
-            alert("Ошибка сохранения: " + e.message);
-        }
-    };
 
-    // Отрисовка списка
-    function render() {
-        const listDiv = document.getElementById('list');
-        listDiv.innerHTML = '';
-        db.products.forEach(p => {
-            listDiv.innerHTML += `<div class="item"><b>${p.name}</b> <span>${p.qty} шт.</span></div>`;
-        });
+        const product = {
+            name: name,
+            qty: qty,
+            photo: currentPhoto,
+            date: new Date().toLocaleDateString()
+        };
+
+        // Сохраняем в память браузера
+        let products = JSON.parse(localStorage.getItem('sklad_products') || '[]');
+        products.push(product);
+        localStorage.setItem('sklad_products', JSON.stringify(products));
+
+        // Очищаем форму
+        document.getElementById('p-name').value = '';
+        document.getElementById('p-qty').value = '';
+        document.getElementById('p-file').value = '';
+        document.getElementById('preview').style.display = 'none';
+        currentPhoto = "";
+        
+        loadProducts();
+    }
+
+    // Загрузка списка
+    function loadProducts() {
+        const list = document.getElementById('product-list');
+        const products = JSON.parse(localStorage.getItem('sklad_products') || '[]');
+        
+        list.innerHTML = products.map(p => `
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center">
+                    <b>${p.name}</b>
+                    <span style="color:#FF5A1F; font-weight:bold">${p.qty} шт.</span>
+                </div>
+                ${p.photo ? `<img src="${p.photo}" style="width:100%; border-radius:8px; margin-top:10px">` : ''}
+                <div style="font-size:12px; color:#999; margin-top:5px">Добавлено: ${p.date}</div>
+            </div>
+        `).join('');
     }
 </script>
 
