@@ -221,13 +221,12 @@
   function save(){ saveLocal(); saveToCloud(); }
   function setStatus(t,c){const s=$('#appsub');if(s){s.textContent=t;s.style.color=c}}
 
-  // --- Рендеринг (упрощенный для примера) ---
+  // --- Рендеринг (упрощенный для примера, но с твоим дизайном) ---
   function render(){
     $('#view-home').innerHTML=`<div class="srv"><div class="srv-top"><div class="srv-t">Статус: ${cloudOn?'Подключено':'Оффлайн'}</div></div></div>
     <div class="grid"><div class="stat"><div class="num">${db.products.length}</div><div class="lab">Товаров</div></div>
     <div class="stat"><div class="num">${db.returns.length}</div><div class="lab">Возвратов</div></div></div>`;
     
-    // Здесь можно добавить рендер остальных вкладок, как в прошлом коде
     $('#view-goods').innerHTML = db.products.map(p => `<div class="card"><div class="name">${p.name}</div><div class="counts"><div class="chip"><div class="v">${p.qty}</div></div></div></div>`).join('');
   }
 
