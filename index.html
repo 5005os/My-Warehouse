@@ -295,7 +295,7 @@
    Чтобы трое переписывались с разных телефонов — вставь сюда
    данные бесплатного проекта Supabase. Пусто = чат работает
    только на этом устройстве. */
-const CONFIG = { supabaseUrl:'https://nwalajgpjjwybjefitng.supabase.co', supabaseKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53YWxhamdwamp3eWJqZWZpdG5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDAxMzksImV4cCI6MjA5NzM3NjEzOX0.ovnuy0TmGE25duXBissZNmyj5uuFdwFg4pGMconVj4E' };
+const PB_URL = 'https://mytest1234test1234.ru';
 
 /* ---------- Пользователи ---------- */
 const USERS=[
@@ -314,40 +314,53 @@ function load(){
   if(!mem) mem=seed();
   return mem;
 }
-let supa=null, cloudOn=false;
+let pb=null, cloudOn=false, whId=null;
 function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(mem));}catch(e){}}
 function save(){ saveLocal(); if(cloudOn)cloudPush(); }
 function setStatus(txt,color){ const s=document.getElementById('appsub'); if(s){ s.textContent=txt; s.style.color=color||''; } }
 function cloudError(msg){ setStatus('⚠ '+msg, '#ff8c8c'); }
-function withTimeout(p,ms){ ms=ms||9000; return Promise.race([Promise.resolve(p), new Promise((_,rej)=>setTimeout(()=>rej(new Error('нет ответа от сервера ('+(ms/1000)+' сек) — связь блокируется (расширение браузера, антивирус, файрвол или сеть)')),ms))]); }
-const APP_VERSION='v8';
+function withTimeout(p,ms){ ms=ms||12000; return Promise.race([Promise.resolve(p), new Promise((_,rej)=>setTimeout(()=>rej(new Error('нет ответа от сервера ('+(ms/1000)+' сек) — проверь, что PocketBase запущен и домен открывается по https')),ms))]); }
+const APP_VERSION='v9 (сервер)';
 let diagResults=null, diagRunning=false;
 async function runDiag(){
   diagRunning=true; renderHome();
   const r=[]; const push=(name,ok,detail)=>r.push({name,ok,detail:detail||''});
-  if(!CONFIG.supabaseUrl||!CONFIG.supabaseKey){ push('Ключи сервера вписаны',false,'в файле пусто'); diagResults=r; diagRunning=false; renderHome(); return; }
-  push('Ключи сервера вписаны',true);
-  if(!supa){ push('Связь с сервером',false,'не подключается — интернет к серверу блокируется (расширение браузера, файрвол или сеть)'); diagResults=r; diagRunning=false; renderHome(); return; }
+  if(!PB_URL){ push('Адрес сервера указан',false,'в файле пусто'); diagResults=r; diagRunning=false; renderHome(); return; }
+  push('Адрес сервера указан',true);
+  if(!pb){ push('Связь с сервером',false,'не подключился — проверь, что PocketBase запущен на домене по https'); diagResults=r; diagRunning=false; renderHome(); return; }
   push('Связь с сервером',true);
-  try{ const {error}=await withTimeout(supa.from('warehouse').select('id').limit(1)); if(error)throw error; push('Чтение склада',true); }
+  try{ await withTimeout(pb.collection('warehouse').getList(1,1,{requestKey:null})); push('Чтение склада',true); }
   catch(e){ push('Чтение склада',false,e.message||(''+e)); }
-  try{ const {error}=await withTimeout(supa.from('warehouse').upsert({id:1,data:{products:db.products,returns:db.returns,shipments:db.shipments},updated_at:new Date().toISOString()})); if(error)throw error; push('Запись склада (главное!)',true); }
-  catch(e){ push('Запись склада (главное!)',false,e.message||(''+e)); }
-  try{ const {error}=await withTimeout(supa.from('messages').select('id').limit(1)); if(error)throw error; push('Чат',true); }
+  try{
+    const payload={data:JSON.stringify({products:db.products,returns:db.returns,shipments:db.shipments})};
+    if(whId) await withTimeout(pb.collection('warehouse').update(whId,payload,{requestKey:null}));
+    else { const rec=await withTimeout(pb.collection('warehouse').create(payload,{requestKey:null})); whId=rec.id; }
+    push('Запись склада (главное!)',true);
+  }catch(e){ push('Запись склада (главное!)',false,e.message||(''+e)); }
+  try{ await withTimeout(pb.collection('messages').getList(1,1,{requestKey:null})); push('Чат',true); }
   catch(e){ push('Чат',false,e.message||(''+e)); }
   diagResults=r; diagRunning=false; renderHome();
 }
 async function cloudPush(){
   if(!cloudOn)return;
-  try{ const {error}=await supa.from('warehouse').upsert({id:1,data:{products:db.products,returns:db.returns,shipments:db.shipments},updated_at:new Date().toISOString()}); if(error)throw error; }
-  catch(e){ cloudError('сохранение — '+(e.message||e)); }
+  try{
+    const payload={data:JSON.stringify({products:db.products,returns:db.returns,shipments:db.shipments})};
+    if(whId){ await pb.collection('warehouse').update(whId,payload,{requestKey:null}); }
+    else { const rec=await pb.collection('warehouse').create(payload,{requestKey:null}); whId=rec.id; }
+  }catch(e){ cloudError('сохранение — '+(e.message||e)); }
 }
 async function cloudLoadWarehouse(){
   try{
-    const {data,error}=await withTimeout(supa.from('warehouse').select('data').eq('id',1).maybeSingle());
-    if(error)throw error;
-    if(data&&data.data){ db.products=data.data.products||[]; db.returns=data.data.returns||[]; db.shipments=data.data.shipments||[]; saveLocal(); render(); }
-    else { const up=await supa.from('warehouse').upsert({id:1,data:{products:db.products,returns:db.returns,shipments:db.shipments}}); if(up.error)throw up.error; }
+    const items=await withTimeout(pb.collection('warehouse').getFullList({sort:'-created',requestKey:null}));
+    if(items&&items.length){
+      whId=items[0].id;
+      let d={}; try{ d=JSON.parse(items[0].data||'{}'); }catch(_){}
+      db.products=d.products||[]; db.returns=d.returns||[]; db.shipments=d.shipments||[];
+      saveLocal(); render();
+    } else {
+      const rec=await pb.collection('warehouse').create({data:JSON.stringify({products:db.products,returns:db.returns,shipments:db.shipments})},{requestKey:null});
+      whId=rec.id;
+    }
     setStatus('● общий доступ','#6ee7a0');
   }catch(e){ cloudError('склад — '+(e.message||e)); }
 }
@@ -373,7 +386,8 @@ function fmtDate(t){const d=new Date(t);return d.toLocaleDateString('ru-RU',{day
 function fmtTime(t){return new Date(t).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}
 function fmtSize(b){b=+b||0;if(b<1024)return b+' Б';if(b<1048576)return Math.round(b/1024)+' КБ';return (b/1048576).toFixed(1)+' МБ';}
 function fmtDateOnly(d){if(!d)return '';const p=(''+d).split('-');return p.length===3?`${p[2]}.${p[1]}.${p[0]}`:d;}
-function mapMsg(r){return {id:r.id,user:r.login,text:r.text,ts:new Date(r.created_at).getTime(),fileUrl:r.file_url,fileName:r.file_name,fileType:r.file_type,fileSize:r.file_size};}
+function mimeFromName(n){n=(n||'').toLowerCase();const ext=n.split('.').pop();if(/^(jpg|jpeg|png|gif|webp)$/.test(ext))return 'image/'+(ext==='jpg'?'jpeg':ext);return 'application/octet-stream';}
+function mapMsg(r){let fileUrl='',fileName='',fileType='';if(r.file){try{const f=pb.files;fileUrl=(f.getURL||f.getUrl).call(f,r,r.file);}catch(_){}fileName=r.file;fileType=mimeFromName(r.file);}return {id:r.id,user:r.login,text:r.text,ts:new Date(r.created||r.created_at||Date.now()).getTime(),fileUrl,fileName,fileType,fileSize:0};}
 function fileEmoji(t,n){t=t||'';n=(n||'').toLowerCase();if(/sheet|excel|xls|csv/.test(t)||/\.(xls|xlsx|csv)$/.test(n))return 'XLS';if(/word|document|msword|\.doc/.test(t)||/\.(doc|docx)$/.test(n))return 'DOC';if(/pdf/.test(t)||/\.pdf$/.test(n))return 'PDF';if(/\.(zip|rar|7z)$/.test(n))return 'ZIP';return 'ФАЙЛ';}
 async function compressToBlob(file,max,q){
   let bmp;
@@ -652,7 +666,7 @@ async function sendMsg(){
   const f=$('#chatField'); const text=f.value.trim(); if(!text||!currentUser)return;
   f.value='';
   if(cloudOn){
-    try{ await supa.from('messages').insert({login:currentUser.login,text}); }catch(e){ alert('Не удалось отправить'); }
+    try{ await pb.collection('messages').create({login:currentUser.login,text,created_at:new Date().toISOString()},{requestKey:null}); }catch(e){ alert('Не удалось отправить: '+(e.message||e)); }
   }else{
     chatMsgs.push({id:id(),user:currentUser.login,text,ts:Date.now()});
     saveChat(); renderChat(); scrollChat();
@@ -666,60 +680,48 @@ async function uploadChatFile(file){
   if(!cloudOn||!currentUser)return;
   const btn=$('#chatAttach'); const old=btn.innerHTML; btn.disabled=true; btn.textContent='…';
   try{
-    let body=file, type=file.type||'application/octet-stream', name=file.name||'file';
-    if(type.startsWith('image/')){ try{ body=await compressToBlob(file,1280,0.75); type='image/jpeg'; name=name.replace(/\.[^.]+$/,'')+'.jpg'; }catch(_){ body=file; type=file.type; name=file.name; } }
-    const safe=name.replace(/[^\w.\-]+/g,'_').slice(-60);
-    const path=Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
-    const up=await supa.storage.from('chatfiles').upload(path,body,{contentType:type,upsert:false});
-    if(up.error)throw up.error;
-    const url=supa.storage.from('chatfiles').getPublicUrl(path).data.publicUrl;
-    const size=(body&&body.size)||file.size||0;
-    const ins=await supa.from('messages').insert({login:currentUser.login,text:'',file_url:url,file_name:name,file_type:type,file_size:size});
-    if(ins.error)throw ins.error;
-    cleanupStorage();
-  }catch(err){ alert('Не удалось отправить файл: '+(err.message||err)); }
+    let body=file, name=file.name||'file';
+    if((file.type||'').startsWith('image/')){ try{ const b=await compressToBlob(file,1280,0.75); body=new File([b], name.replace(/\.[^.]+$/,'')+'.jpg', {type:'image/jpeg'}); }catch(_){ body=file; } }
+    const data=new FormData();
+    data.append('login', currentUser.login);
+    data.append('text', '');
+    data.append('created_at', new Date().toISOString());
+    data.append('file', body);
+    await pb.collection('messages').create(data,{requestKey:null});
+  }catch(err){ alert('Не удалось отправить файл: '+(err.message||err)+'\n\nЕсли ошибка про поле «file» — добавь в коллекцию messages поле типа File с именем file.'); }
   btn.disabled=false; btn.innerHTML=old;
 }
-async function cleanupStorage(){
-  if(!cloudOn)return;
-  try{
-    const {data}=await supa.storage.from('chatfiles').list('',{limit:1000,sortBy:{column:'created_at',order:'asc'}});
-    if(!data||!data.length)return;
-    let total=data.reduce((t,f)=>t+((f.metadata&&f.metadata.size)||0),0);
-    const LIMIT=900*1024*1024, TARGET=700*1024*1024;
-    if(total<=LIMIT)return;
-    for(const f of data){
-      if(total<=TARGET)break;
-      await supa.storage.from('chatfiles').remove([f.name]);
-      await supa.from('messages').delete().like('file_url','%'+f.name);
-      total-=((f.metadata&&f.metadata.size)||0);
-    }
-  }catch(e){}
-}
+async function cleanupStorage(){ /* на своём сервере авто-очистка не нужна */ }
 
 async function initCloud(){
-  if(!CONFIG.supabaseUrl||!CONFIG.supabaseKey) return;
+  if(!PB_URL) return;
   try{
-    const m=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    supa=m.createClient(CONFIG.supabaseUrl,CONFIG.supabaseKey);
+    const M=await import('https://cdn.jsdelivr.net/npm/pocketbase/dist/pocketbase.es.mjs');
+    pb=new M.default(PB_URL);
+    pb.autoCancellation(false);
     cloudOn=true;
     setStatus('подключение…','#cfd3da');
     // СКЛАД
     await cloudLoadWarehouse();
-    supa.channel('wh').on('postgres_changes',{event:'*',schema:'public',table:'warehouse'},()=>cloudLoadWarehouse()).subscribe();
+    pb.collection('warehouse').subscribe('*', e=>{
+      if(e.record&&e.record.data!==undefined){
+        whId=e.record.id;
+        let d={}; try{ d=JSON.parse(e.record.data||'{}'); }catch(_){}
+        db.products=d.products||[]; db.returns=d.returns||[]; db.shipments=d.shipments||[];
+        saveLocal(); render();
+      }
+    });
     // ЧАТ
-    const {data,error}=await withTimeout(supa.from('messages').select('*').order('created_at',{ascending:true}).limit(300));
-    if(error)throw error;
-    chatMsgs=(data||[]).map(mapMsg);
+    const list=await withTimeout(pb.collection('messages').getFullList({sort:'created',requestKey:null}));
+    chatMsgs=list.map(mapMsg);
     renderChat(); if(tab==='chat')scrollChat();
-    supa.channel('msg').on('postgres_changes',{event:'*',schema:'public',table:'messages'},p=>{
-      if(p.eventType==='DELETE'){ if(p.old&&p.old.id){chatMsgs=chatMsgs.filter(x=>x.id!==p.old.id);renderChat();} return; }
-      const r=p.new;
-      if(!r||chatMsgs.some(x=>x.id===r.id))return;
-      chatMsgs.push(mapMsg(r));
+    pb.collection('messages').subscribe('*', e=>{
+      if(e.action==='delete'){ chatMsgs=chatMsgs.filter(x=>x.id!==e.record.id); renderChat(); return; }
+      if(chatMsgs.some(x=>x.id===e.record.id))return;
+      chatMsgs.push(mapMsg(e.record)); chatMsgs.sort((a,b)=>a.ts-b.ts);
       renderChat(); if(tab==='chat')scrollChat();
-    }).subscribe();
-  }catch(e){ cloudError('чат — '+(e.message||e)); }
+    });
+  }catch(e){ cloudError('подключение — '+(e.message||e)); }
 }
 
 /* ---------- Модалки ---------- */
